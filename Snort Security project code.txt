@@ -1,0 +1,110 @@
+1. Install Dependencies
+> sudo apt update
+> sudo apt install -y \
+build-essential libpcap-dev libpcre3-dev libdumbnet-dev bison flex \
+zlib1g-dev liblzma-dev openssl libssl-dev pkg-config libnghttp2-dev \
+libhwloc-dev cmake libnetfilter-queue-dev libmnl-dev ethtool \
+luajit libluajit-5.1-dev libtirpc-dev
+
+📦 2. Install DAQ
+> sudo wget https://www.snort.org/downloads/snort/daq-2.0.7.tar.gz
+> sudo tar -xvzf daq-2.0.7.tar.gz
+> cd daq-2.0.7
+> sudo ./configure && make && sudo make install
+> cd ..
+
+🐗 3. Install Snort
+> sudo wget https://www.snort.org/downloads/snort/snort-2.9.20.tar.gz
+> sudo tar -xvzf snort-2.9.20.tar.gz
+> cd snort-2.9.20
+> sudo ./configure --enable-sourcefire --disable-open-appid \
+    CFLAGS="-I/usr/include/tirpc" LDFLAGS="-ltirpc"
+make -j$(nproc)
+> sudo make install
+
+📁 4. Setup Snort Directories
+> sudo groupadd snort
+> sudo useradd snort -r -s /sbin/nologin -c SNORT_IDS -g snort
+
+> sudo mkdir -p /etc/snort/{rules,preproc_rules,so_rules}
+> sudo mkdir -p /usr/local/lib/snort_dynamicrules
+> sudo mkdir /var/log/snort
+
+> sudo touch /etc/snort/rules/local.rules
+> sudo touch /etc/snort/snort.conf
+
+> sudo chown -R snort:snort /etc/snort /var/log/snort
+
+⚙️ 5. Basic snort.conf
+
+Save this to:
+> sudo nano /etc/snort/snort.conf
+
+var HOME_NET any
+var EXTERNAL_NET any
+var RULE_PATH /etc/snort/rules
+
+include $RULE_PATH/local.rules
+
+🛡️ 6. Add Custom Rules
+> sudo nano /etc/snort/rules/local.rules
+
+# SYN Flood Detection (20 SYNs in 1 second from same source)
+alert tcp any any -> $HOME_NET 80 (flags:S; msg:"SYN Flood Detected"; detection_filter:track by_src, count 20, seconds 1; sid:1000001; rev:2;)
+
+# Ping Flood Detection (10 pings in 1 second from same source)
+alert icmp any any -> $HOME_NET any (itype:8; msg:"Ping Flood Detected"; detection_filter:track by_src, count 10, seconds 1; sid:1000002; rev:2;)
+
+# --- Ping of Death / Oversized ICMP variants ---
+
+# A) Oversized ICMP Echo Request (first fragment includes ICMP header + big payload)
+alert icmp any any -> $HOME_NET any (itype:8; dsize:>1400; msg:"PoD: ICMP Echo oversized payload (>1400)"; sid:1000102; rev:1;)
+
+# B) Fragmented ICMP Echo Request (first fragment has MF bit set)
+alert icmp any any -> $HOME_NET any (itype:8; fragbits:M; msg:"PoD: ICMP Echo is fragmented (MF=1)"; sid:1000100; rev:1;)
+
+# C) Non-first ICMP fragments (no ICMP header present, detect by IP proto + frag offset)
+alert ip any any -> $HOME_NET any (ip_proto:icmp; fragoffset:>0; msg:"Ping of Death Detected"; sid:1000101; rev:1;)
+
+# D) (Optional) Debug: see any ICMP reaching Snort
+alert icmp any any -> $HOME_NET any (msg:"DEBUG: ICMP seen"; sid:1000199; rev:1;)7. Test Configuration
+> sudo snort -T -c /etc/snort/snort.conf
+
+
+Should say: Snort successfully validated the configuration!
+
+✅ Expected:
+
+Snort successfully validated the configuration!
+Snort exiting
+
+🛠 Step 3: Run Snort
+> sudo snort -A console -q -c /etc/snort/snort.conf -i enp0s8
+
+
+Snort will now run and show alerts on screen.
+
+🧪 Testing
+
+From VM1, run:
+
+SYN flood
+
+> hping3 -S -p 80 --flood <VM2-IP>
+
+
+Ping flood
+
+> ping -f <VM2-IP>
+
+
+Ping of death
+
+> ping -s 2000 <VM2-IP>
+
+
+Alerts will show in Snort console like:
+
+[**] [1:1000001:2] SYN Flood Detected [**]
+[**] [1:1000002:2] Ping Flood Detected [**]
+[**] [1:1000003:2] Ping of Death Detected [**]
