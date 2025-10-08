@@ -1,0 +1,201 @@
+Set Hostname
+
+On VM1 (DB):
+
+sudo hostnamectl set-hostname mail.sunbeam.local
+
+
+Add to /etc/hosts:
+
+VM1_IP   mail.sunbeam.local
+
+2. Install Postfix (SMTP)
+sudo apt update
+sudo apt install -y postfix
+
+
+During setup:
+
+Type: Internet Site
+
+System mail name: sunbeam.local
+
+Check status:
+
+systemctl status postfix
+
+3. Install Dovecot (IMAP/POP3)
+sudo apt install -y dovecot-imapd dovecot-pop3d
+
+
+Enable Maildir:
+
+sudo nano /etc/dovecot/conf.d/10-mail.conf
+
+
+Set:
+
+mail_location = maildir:~/Maildir
+mail_location = mbox:~/mail:INBOX=/var/mail/%u
+
+
+Enable auth:
+
+sudo nano /etc/dovecot/conf.d/10-auth.conf
+
+
+Uncomment:
+
+disable_plaintext_auth = no
+auth_mechanisms = plain login
+
+
+Restart:
+
+sudo systemctl restart dovecot
+
+4. Create Mail Users
+sudo adduser user1
+sudo adduser user2
+
+
+Initialize Maildir:
+
+sudo mkdir -p /home/user1/Maildir /home/user2/Maildir
+sudo chown -R user1:user1 /home/user1/Maildir
+sudo chown -R user2:user2 /home/user2/Maildir
+
+5. Test Mail Locally
+
+Send mail from user1 to user2:
+
+echo "Test mail" | mail -s "Hello" user2@sunbeam.local
+
+
+Check inbox for user2:
+
+mail
+
+6. Install Roundcube Webmail
+sudo apt install -y apache2 php php-mysql php-intl php-json php-mbstring php-curl mariadb-server mariadb-client
+sudo apt install -y roundcube roundcube-core roundcube-mysql roundcube-plugins
+
+
+During setup:
+
+Create a DB: roundcube
+
+User: roundcube
+
+Apache config:
+
+sudo nano /etc/apache2/sites-available/roundcube.conf
+
+
+Add:
+
+<VirtualHost *:80>
+    ServerName mail.sunbeam.local
+    DocumentRoot /usr/share/roundcube
+    <Directory /usr/share/roundcube>
+        Options -Indexes
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+
+Alias /roundcube /var/lib/roundcube
+
+<Directory /var/lib/roundcube/>
+    Options +FollowSymLinks
+    AllowOverride All
+    <IfModule mod_php7.c>
+
+<Directory /var/lib/roundcube/>
+    Options +FollowSymLinks
+    AllowOverride All
+    <IfModule mod_php7.c>
+        AddType application/x-httpd-php .php
+        php_flag display_errors Off
+        php_flag log_errors On
+        php_value error_log /var/log/apache2/roundcube_error.log
+    </IfModule>
+</Directory>
+
+
+Enable site + restart:
+
+sudo a2ensite roundcube.conf
+sudo systemctl restart apache2
+
+
+Access:
+
+http://mail.sunbeam.local/roundcube
+
+
+Login as user1@sunbeam.local
+
+7. Open Firewall
+sudo ufw allow 25   # SMTP
+sudo ufw allow 143  # IMAP
+sudo ufw allow 110  # POP3
+sudo ufw allow 80   # HTTP (for Roundcube)
+
+
+✅ At this point:
+
+DB VM = MariaDB + Mail (Postfix + Dovecot + Roundcube)
+
+Web VM = Flask Todo app + Nginx + HTTPS + Snort
+
+👉 Do you want me to give you a ready-to-run script that installs and configures Postfix + Dovecot + Roundcube automatically on your DB VM, instead of step-by-step manual edits?
+
+You said:
+sb@debian:~$ echo "Test mail" | mail -s "Hello" user2@sunbeam.local
+-bash: mail: command not found
+sb@debian:~$
+ChatGPT said:
+
+Ah 👍 — the mail command isn’t installed by default on Debian. That’s just a mail client utility for testing.
+
+Let’s fix that:
+
+✅ Install mail client (bsd-mailx or mailutils)
+
+On your DB (mail) VM:
+
+sudo apt update
+sudo apt install -y mailutils
+
+
+During install it may ask about Postfix config → choose Internet Site (same as before).
+
+✅ Test sending mail
+
+Now try again:
+
+echo "Test mail" | mail -s "Hello" user2@sunbeam.local
+
+
+Then log in as user2:
+
+su - user2
+mail
+
+sudo nano /etc/roundcube/config.inc.php
+And set:
+$config['default_host'] = 'localhost';
+$config['default_port'] = 143;
+
+$config['smtp_server'] = 'localhost';
+$config['smtp_port'] = 25;
+
+$config['username_domain'] = '';
+
+
+Step 3: Check Logs While Logging In
+
+Run in a terminal:
+
+sudo journalctl -u dovecot -u postfix -f
