@@ -1,0 +1,164 @@
+Install Nagios Core on VM1 (Web Server):
+sudo apt update
+sudo apt -y install autoconf gcc libc6 make wget unzip apache2 php libapache2-mod-php php-gd libgd-dev
+sudo apt -y install libperl-dev libssl-dev daemon unzip dnsutils
+
+cd /tmp
+wget https://github.com/NagiosEnterprises/nagioscore/releases/download/nagios-4.5.5/nagios-4.5.5.tar.gz
+tar xzf nagios-4.5.5.tar.gz
+cd nagios-4.5.5
+./configure --with-httpd-conf=/etc/apache2/sites-enabled
+make all
+sudo make install-groups-users
+sudo make install
+sudo make install-daemoninit
+sudo make install-commandmode
+sudo make install-config
+sudo make install-webconf
+
+Create Nagios admin user:
+sudo htpasswd -c /usr/local/nagios/etc/htpasswd.users nagiosadmin
+# Enter password
+
+Enable Apache modules & restart:
+sudo a2enmod rewrite cgi
+sudo systemctl restart apache2
+sudo systemctl enable nagios
+sudo systemctl start nagios
+
+
+Now open:
+
+http://web-server-IP/nagios
+
+
+sudo mkdir -p /usr/local/nagios/etc/servers
+sudo nano /usr/local/nagios/etc/servers/webserver.cfg
+
+define host {
+    use                     linux-server
+    host_name               web-server
+    address                 192.168.56.120
+}
+
+define service {
+    use                     generic-service
+    host_name               web-server
+    service_description     CPU Load
+    check_command           check_nrpe!check_cpu
+}
+
+define service {
+    use                     generic-service
+    host_name               web-server
+    service_description     Memory Usage
+    check_command           check_nrpe!check_mem
+}
+
+define service {
+    use                     generic-service
+    host_name               web-server
+    service_description     Apache2 Process
+    check_command           check_nrpe!check_apache
+}
+
+define service {
+    use                     generic-service
+    host_name               web-server
+    service_description     HTTPS Service
+    check_command           check_nrpe!check_https
+}
+
+define service {
+    use                     generic-service
+    host_name               web-server
+    service_description     SMTP Service
+    check_command           check_nrpe!check_smtp
+}
+
+define service {
+    use                     generic-service
+    host_name               web-server
+    service_description     IMAP Service
+    check_command           check_nrpe!check_imap
+}
+
+define service {
+    use                     generic-service
+    host_name               web-server
+    service_description     POP3 Service
+    check_command           check_nrpe!check_pop3
+}
+
+sudo nano /usr/local/nagios/etc/nagios.cfg
+
+Add this line at the bottom:
+
+cfg_dir=/usr/local/nagios/etc/servers
+
+
+Save & exit.
+
+Step 3: Verify Config
+sudo /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
+
+
+You should see Total Warnings: 0 Total Errors: 0.
+
+Step 4: Restart Nagios
+sudo systemctl restart nagios
+sudo systemctl status nagios
+
+Step 5: Check on Nagios Web UI
+
+Open your Nagios web interface:
+
+http://<Nagios-Server-IP>/nagios
+
+
+sudo nano /usr/local/nagios/etc/servers/mailserver.cfg
+ 
+define host {
+    use                     linux-server
+    host_name               mail-server
+    address                 192.168.1.30          ; Mail Server IP
+}
+
+define service {
+    use                     generic-service
+    host_name               mail-server
+    service_description     SMTP
+    check_command           check_nrpe!check_smtp
+}
+
+define service {
+    use                     generic-service
+    host_name               mail-server
+    service_description     IMAP
+    check_command           check_nrpe!check_imap
+}
+
+define service {
+    use                     generic-service
+    host_name               mail-server
+    service_description     POP3
+    check_command           check_nrpe!check_pop3
+}
+
+define service {
+    use                     generic-service
+    host_name               mail-server
+    service_description     CPU Load
+    check_command           check_nrpe!check_load
+}
+
+define service {
+    use                     generic-service
+    host_name               mail-server
+    service_description     Memory Usage
+    check_command           check_nrpe!check_mem
+}
+
+Restart Nagios
+sudo /usr/local/nagios/bin/nagios -v /usr/local/nagios/etc/nagios.cfg
+sudo systemctl restart nagios
